@@ -1,2 +1,2 @@
 # RadiologySum
-Tongnian xiao sha gua
+Tongnian is so smart
