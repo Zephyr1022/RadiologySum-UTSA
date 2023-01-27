@@ -10,3 +10,10 @@ This repo provides code for generating impressions using descriptions of finding
 ## Training Instructions
 
 ## Testing Instructions
+
+
+# CITE
+
+```
+BibTex CITATION HERE WHEN AVAILABLE
+```
