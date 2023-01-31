@@ -25,7 +25,6 @@ from torch import cuda
 
 device = 'cuda'
 
-
 #Preparing the Dataset for data processing: Class
 #defines how the text is pre-processed before sending it to the neural network
 #This dataset will be used the the Dataloader method 
@@ -236,7 +235,6 @@ def validate(epoch, epochs, tokenizer, model, device, loader):
 			
 	return predictions, actuals, total_valid_rouge
 
-
 def main():
 	
 	# Defining some key variables that will be used later on in the training  
@@ -273,7 +271,6 @@ def main():
 	print("TRAIN Dataset: {}".format(train_dataset.shape))
 	print("VALID Dataset: {}".format(val_dataset.shape))
 	print("TEST Dataset: {}".format(test_dataset.shape))
-
 	# Creating the Training and Validation dataset for further creation of Dataloader
 	training_set = CustomDataset(train_dataset, tokenizer, MAX_LEN, SUMMARY_LEN)
 	val_set = CustomDataset(val_dataset, tokenizer, MAX_LEN, SUMMARY_LEN)
