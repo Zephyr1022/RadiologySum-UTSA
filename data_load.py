@@ -3,28 +3,28 @@ import pandas as pd
 
 def main():
 
-    with open('./data/rrs-mimiciii/all/train.findings.tok') as train_find:
-        train_find_list = [line.rstrip('\n') for line in train_find]
+    with open('./data/rrs-mimiciii/all/train.findings.tok') as f:
+        train_find_list = [line.rstrip('\n') for line in f]
     print(len(train_find_list))
     
-    with open('./data/rrs-mimiciii/all/train.impression.tok') as train_imp:
-        train_imp_list = [line.rstrip('\n') for line in train_imp]
+    with open('./data/rrs-mimiciii/all/train.impression.tok') as f:
+        train_imp_list = [line.rstrip('\n') for line in f]
     print(len(train_imp_list))
 
-    with open('./data/rrs-mimiciii/all/validate.findings.tok') as val_find:
-        val_find_list = [line.rstrip('\n') for line in val_find]
+    with open('./data/rrs-mimiciii/all/validate.findings.tok') as f:
+        val_find_list = [line.rstrip('\n') for line in f]
     print(len(val_find_list))
 
-    with open('./data/rrs-mimiciii/all/validate.impression.tok') as val_imp:
-        val_imp_list = [line.rstrip('\n') for line in val_imp]
+    with open('./data/rrs-mimiciii/all/validate.impression.tok') as f:
+        val_imp_list = [line.rstrip('\n') for line in f]
     print(len(val_imp_list))
 
-    with open('./data/rrs-mimiciii/all/test.findings.tok') as test_find:
-        test_find_list = [line.rstrip('\n') for line in test_find]
+    with open('./data/rrs-mimiciii/all/test.findings.tok') as f:
+        test_find_list = [line.rstrip('\n') for line in f]
     print(len(test_find_list))
 
-    with open('./data/rrs-mimiciii/all/test.impression.tok') as test_imp:
-        test_imp_list = [line.rstrip('\n') for line in test_imp]
+    with open('./data/rrs-mimiciii/all/test.impression.tok') as f:
+        test_imp_list = [line.rstrip('\n') for line in f]
     print(len(test_imp_list))
 
     train_dict = {'text':train_find_list, 'summary':train_imp_list} 
@@ -39,17 +39,17 @@ def main():
     test_df = pd.DataFrame(test_dict) 
     test_df.to_csv('./data/mimiciii-csv/test_data.csv', index=False) 
 
-    read_train = pd.read_csv('./data/mimiciii-csv/train_data.csv')
-    print(read_train.shape)
-    print(read_train.head())
+    # read_train = pd.read_csv('./data/mimiciii-csv/train_data.csv')
+    # print(read_train.shape)
+    # print(read_train.head())
 
-    read_val = pd.read_csv('./data/mimiciii-csv/val_data.csv')
-    print(read_val.shape)
-    print(read_val.head())
+    # read_val = pd.read_csv('./data/mimiciii-csv/val_data.csv')
+    # print(read_val.shape)
+    # print(read_val.head())
 
-    read_test = pd.read_csv('./data/mimiciii-csv/test_data.csv')
-    print(read_test.shape)
-    print(read_test.head())
+    # read_test = pd.read_csv('./data/mimiciii-csv/test_data.csv')
+    # print(read_test.shape)
+    # print(read_test.head())
 
 
 if __name__ == '__main__':
