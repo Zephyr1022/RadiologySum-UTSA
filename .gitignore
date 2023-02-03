@@ -1,2 +1,4 @@
 data
 tmp
+model_save
+nohup.log

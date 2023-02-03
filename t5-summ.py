@@ -2,6 +2,7 @@
 import random
 import sys
 import time
+import csv
 import numpy as np
 import pandas as pd
 from collections import defaultdict
@@ -9,20 +10,15 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, RandomSampler, SequentialSampler
 from transformers.optimization import Adafactor, AdafactorSchedule
-
 import transformers
 from datasets import load_dataset, load_metric
-
 import evaluate
 from sklearn.metrics import classification_report, accuracy_score
 from sklearn.metrics._classification import _check_targets
-
-# Importing the T5 modules from huggingface/transformers
+from radgraph import F1RadGraph
 from transformers import T5Tokenizer, T5ForConditionalGeneration
-
-# # Setting up the device for GPU usage
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from torch import cuda
-
 device = 'cuda'
 
 #Preparing the Dataset for data processing: Class
@@ -70,7 +66,6 @@ class CustomDataset(Dataset):
 			'target_ids_y': target_ids.to(dtype=torch.long)
 		}
 
-
 #def postprocess_text(preds, labels):
 #	preds = [pred.strip() for pred in preds]
 #	labels = [label.strip() for label in labels]
@@ -93,7 +88,6 @@ class CustomDataset(Dataset):
 def train(epoch, epochs, tokenizer, model, device, loader, optimizer):
 	# capture time
 	total_t0 = time.time()
-	
 	# Perform one full pass over the training set.
 	print("")
 	print('======== Epoch {:} / {:} ========'.format(epoch + 1, epochs))
@@ -106,10 +100,10 @@ def train(epoch, epochs, tokenizer, model, device, loader, optimizer):
 	model.train() # put model into traning mode
 	
 	# for each batch of training data...
-	for step,batch in enumerate(loader, 0):
+	for step, batch in enumerate(loader, 0):
 		
 		# progress update every 40 batches.
-		if step % 1 == 0:# and not step == 0:
+		if step % 500 == 0:# and not step == 0:
 			print('  Batch {:>5,}  of  {:>5,}.'.format(step, len(loader))) # Report progress.
 		
 		y = batch['target_ids'].to(device, dtype = torch.long)
@@ -131,10 +125,8 @@ def train(epoch, epochs, tokenizer, model, device, loader, optimizer):
 		# sum the training loss over all batches for average loss at end
 		# loss is a tensor containing a single value
 		train_total_loss += loss.item()
-
-		print({"Training Loss": loss.item()})
-		if step%500==0:
-			print(f'Epoch: {epoch}, Loss:  {loss.item()}')
+		if step%500 == 0:
+			print({"Training Loss": loss.item()})
 		
 		# backpropagation-> updata the model's parameters to minimize the loss function
 		optimizer.zero_grad() # clear previously calculated gradients
@@ -148,11 +140,14 @@ def train(epoch, epochs, tokenizer, model, device, loader, optimizer):
 	training_time = time.time() - total_t0
 	
 	# print result summaries
-	print("")
-	print("summary results")
-	print("epoch | trn loss | trn time ")
+	print("===============")
+	print("Summary Results")
+	print("===============")
+	print("Epoch | train loss | train time ")
 	print(f"{epoch+1:5d} | {avg_train_loss:.5f} | {training_time:}")
-		
+	# print(f'Epoch: {epoch}, Loss:  {loss.item()}')
+
+
 
 # During the validation stage we pass the unseen data(Testing Dataset), trained model, 
 # tokenizer and device details to the function to perform the validation run.
@@ -162,8 +157,10 @@ def validate(epoch, epochs, tokenizer, model, device, loader):
 	
 	# capture validation time
 	total_t0 = time.time()
-	rouge_score = evaluate.load("rouge")
 	
+	bleu_score = evaluate.load("bleu")
+	rouge_score = evaluate.load("rouge")
+	f1radgraph = F1RadGraph(reward_level="partial")
 	
 	# After the completion of each training epoch, measure our performance on
 	# our validation set.
@@ -184,7 +181,7 @@ def validate(epoch, epochs, tokenizer, model, device, loader):
 			y = batch['target_ids'].to(device, dtype = torch.long)
 			ids = batch['source_ids'].to(device, dtype = torch.long)
 			mask = batch['source_mask'].to(device, dtype = torch.long)
-			
+			###############################
 			generated_ids = model.generate(
 				input_ids = ids,
 				attention_mask = mask, 
@@ -194,31 +191,39 @@ def validate(epoch, epochs, tokenizer, model, device, loader):
 				length_penalty=1.0, 
 				early_stopping=True
 				)
-			
+			###############################
 			# Use the tokenizer to convert the output to a string
-			# decoded_preds	
+			# decoded preds	and labels
 			preds = [tokenizer.decode(g, skip_special_tokens=True, clean_up_tokenization_spaces=True) for g in generated_ids]
-			# decoded_labels
 			target = [tokenizer.decode(t, skip_special_tokens=True, clean_up_tokenization_spaces=True)for t in y]
 			
+			bleu_score.add_batch(predictions=preds, references=target)
 			rouge_score.add_batch(predictions=preds, references=target)
-
-			if step%100==0:
-				print(f'Completed {step}')
 
 			predictions.extend(preds)
 			actuals.extend(target)
+
+			if step%500 == 0:
+				print(f'Completed {step} step...')
+				print(predictions)
 			
 		# Compute metrics
-		result = rouge_score.compute()
+		result1 = bleu_score.compute()
+		result2 = rouge_score.compute()
+
+		bleu = result1['bleu']
+		print("---BLEU:", bleu)
 		# Extract the median ROUGE scores
-		rouge1_f1 = result['rouge1']
-		rouge2_f1 = result['rouge2']
-		rougel_f1 = result['rougeL']
+		rouge1_f1 = result2['rouge1']
+		rouge2_f1 = result2['rouge2']
+		rougel_f1 = result2['rougeL']
 		
-		print("test", rouge1_f1, rouge2_f1, rougel_f1)
+		print("---ROUGE---")
+		print("rouge1:", rouge1_f1)
+		print("rouge2:", rouge2_f1)
+		print("rougeL:", rougel_f1)
 		
-		total_valid_rouge = (rouge1_f1 + rouge2_f1 + rougel_f1)/3
+		total_valid_rouge = (rouge1_f1+rouge2_f1+rougel_f1)/3
 		
 #		result = {key: value.mid.fmeasure * 100 for key, value in result.items()}
 #		result = {k: round(v, 4) for k, v in result.items()}
@@ -229,22 +234,24 @@ def validate(epoch, epochs, tokenizer, model, device, loader):
 		
 		# print result summaries
 		print("")
-		print("summary results")
-		print("epoch | val rouge | val time")
-		print(f"{epoch+1:5d} |{total_valid_rouge} | {training_time:}")
+		print("===============")
+		print("Summary Validation Results")
+		print("===============")
+		print("| Epoch | BLEU | ROUGE1 | ROUGE2 | ROUGE-L | Avg Rouge | val time |")
+		print(f"| {epoch+1:5d} | {bleu} | {rouge1_f1} | {rouge2_f1} | {rougel_f1} | {total_valid_rouge} | {training_time:} |")
 			
 	return predictions, actuals, total_valid_rouge
+
+
 
 def main():
 	
 	# Defining some key variables that will be used later on in the training  
-	TRAIN_BATCH_SIZE = 2   # input batch size for training (default: 64)
-	VALID_BATCH_SIZE = 2    # input batch size for testing (default: 1000)
-	TEST_BATCH_SIZE = 2
-	EPOCHS = 2
-	TRAIN_EPOCHS = 2       # number of epochs to train (default: 10)
-	VAL_EPOCHS = 2 
-	LEARNING_RATE = 1e-4    # learning rate (default: 0.01)
+	TRAIN_BATCH_SIZE = 4   # input batch size for training (default: 64)
+	VALID_BATCH_SIZE = 4    # input batch size for testing (default: 1000)
+	TEST_BATCH_SIZE = 4
+	EPOCHS = 10
+	LEARNING_RATE = 1e-2    # learning rate (default: 0.01)
 	SEED = 123               # random seed (default: 42)
 	MAX_LEN = 512
 	SUMMARY_LEN = 128
@@ -255,8 +262,15 @@ def main():
 	torch.backends.cudnn.deterministic = True
 
 	# tokenzier for encoding the text
-	tokenizer = T5Tokenizer.from_pretrained("t5-base")
+	# tokenizer = T5Tokenizer.from_pretrained("t5-base")
+	tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-base")
 	tokenizer.add_tokens(['<s>'])
+	# Defining the model. We are using t5-base model and added a Language model layer on top for generation of Summary. 
+	# model.resize_token_embeddings(len(tokenizer))
+	# model.half()
+	# model = T5ForConditionalGeneration.from_pretrained("t5-base")
+	model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-base")
+	model = model.to(device)
 	
 	# Importing and Pre-Processing the domain data
 	# Selecting the needed columns only. 
@@ -264,7 +278,10 @@ def main():
 	# train_dataset = pd.read_json('./train_data.json', lines=True)[['findings', 'impression']]
 	# val_dataset = pd.read_json('./dev_data.json', lines=True)[['findings', 'impression']]
 	# test_dataset = pd.read_json('./test_data.json', lines=True)[['findings', 'impression']]
-	train_dataset = pd.read_csv('./data/mimiciii-csv/train_data.csv')
+	
+	# Modify this line to train data after fine tuning
+	train_dataset = pd.read_csv('./data/mimiciii-csv/val_data.csv')
+	# ------------------------------------------------
 	val_dataset = pd.read_csv('./data/mimiciii-csv/val_data.csv')
 	test_dataset = pd.read_csv('./data/mimiciii-csv/test_data.csv')
 	
@@ -300,63 +317,59 @@ def main():
 	val_loader = DataLoader(val_set, **val_params)
 	test_loader = DataLoader(test_set, **val_params)
 
-
-	# Defining the model. We are using t5-base model and added a Language model layer on top for generation of Summary. 
-	# Further this model is sent to device (GPU/TPU) for using the hardware.
-	# model.resize_token_embeddings(len(tokenizer))
-	# model.half()
-	
-	# Instantiate Model
-	model = T5ForConditionalGeneration.from_pretrained("t5-base")
-	model = model.to(device)
-		
 	# Defining the optimizer that will be used to tune the weights of the network in the training session. 
 	# optimizer = torch.optim.SGD(params =  model.parameters(), lr=LEARNING_RATE)
 	# optimizer = Adafactor(params =  model.parameters(), lr=LEARNING_RATE, scale_parameter=False, relative_step=False)
-	optimizer = torch.optim.Adam(params =  model.parameters(),
+	optimizer = torch.optim.AdamW(params=model.parameters(),
 		lr=LEARNING_RATE,
 		betas=(0.9, 0.999),
 		eps= 1e-08, 
 		weight_decay=0.,
 		amsgrad=False)
-	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=20, eta_min=0)
+	# scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=20, eta_min=0)
 	#scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.1)
 	
+	output_head = ['predict', 'actual']
+	with open('./model_save/generate_output.csv', 'w', newline='\n') as f:
+		dw = csv.DictWriter(f, delimiter=',', fieldnames=output_head)
+		dw.writeheader()
 	
 	# Training loop
 	print('Initiating Fine-Tuning for the model on our dataset')
-	
 	epochs = EPOCHS
 	training_stats = []
 	valid_stats = []
-	MODEL_PATH = './model_save/test1.pt'
-		
-
 	best_val_rouge = 0
+
 	for epoch in range(epochs):
 		model.to(device)
 		
-		train(epoch,epochs,tokenizer, model, device, training_loader, optimizer)
+		train(epoch, epochs, tokenizer, model, device, training_loader, optimizer)
 		sys.stdout.flush()
 		
-		# validate
-		predictions, actuals, val_rouge = validate(epoch,epochs, tokenizer, model, device, val_loader)
+		# validate & generate
+		predictions, actuals, val_rouge = validate(epoch, epochs, tokenizer, model, device, val_loader)
 		sys.stdout.flush()
+		
+		torch.save(model.state_dict(), f"./model_save/val_model/model_lr{LEARNING_RATE}_batch{VALID_BATCH_SIZE}_{epoch}.pt")
+		
+		with open('./model_save/generate_output.csv', 'a', newline='\n') as f:
+			writer = csv.writer(f, delimiter=',')
+			writer.writerow([predictions, actuals])
 		
 		# Save best model based on ROUGE score
-		if val_rouge.mean() > best_val_rouge:
-			best_val_rouge = val_rouge.mean()
-			predictions_test, actuals_test, test_rouge = validate(epoch,epochs, tokenizer, model, device, test_loader)
+		if val_rouge > best_val_rouge:
+			best_val_rouge = val_rouge
+			# predictions_test, actuals_test, test_rouge = validate(epoch,epochs, tokenizer, model, device, test_loader)
 			
 			# save best model for use later
 			torch.save(model.state_dict(), './model_save/best_model.pt')
-			print(best_val_rouge, ' Val Rouge - Model -  was saved')
-		
-		scheduler.step()
+			print(best_val_rouge, ' Best val Rouge Model was saved.')
+		# scheduler.step()
 
 #Evaluate the model performance with the sumeval's Rouge score.
-#Rouge1: Evaluate the generated text in units of bi-grams.
-#Rouge2: Evaluate the generated text in units of uni-grams.
+#Rouge1: Evaluate the generated text in units of uni-grams.
+#Rouge2: Evaluate the generated text in units of bi-grams.
 #RougeL: Evaluate the match of the generated text sequence.
 	
 if __name__ == '__main__':
