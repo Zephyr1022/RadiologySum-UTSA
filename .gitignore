@@ -1,4 +1,6 @@
 data
+experiments
 tmp
 model_save
 nohup.log
+nohup1.log

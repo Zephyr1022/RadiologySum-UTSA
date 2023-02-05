@@ -1,4 +1,6 @@
 # Importing libraries
+import os
+import logging
 import random
 import sys
 import time
@@ -20,6 +22,15 @@ from transformers import T5Tokenizer, T5ForConditionalGeneration
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from torch import cuda
 device = 'cuda'
+
+
+def create_folder(parent_path, folder):
+    if not parent_path.endswith('/'):
+        parent_path += '/'
+    folder_path = parent_path + folder
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+    return folder_path
 
 #Preparing the Dataset for data processing: Class
 #defines how the text is pre-processed before sending it to the neural network
@@ -85,7 +96,7 @@ class CustomDataset(Dataset):
 # Step 3, Compute the ROUGE scores using the same techniques we saw earlier.
 # Step 4, Save the checkpoints to local. 
 	
-def train(epoch, epochs, tokenizer, model, device, loader, optimizer):
+def train(epoch, epochs, tokenizer, model, device, loader, optimizer, accumulation_steps):
 	# capture time
 	total_t0 = time.time()
 	# Perform one full pass over the training set.
@@ -98,13 +109,13 @@ def train(epoch, epochs, tokenizer, model, device, loader, optimizer):
 	total_train_f1 = 0
 	
 	model.train() # put model into traning mode
-	
-	# for each batch of training data...
-	for step, batch in enumerate(loader, 0):
+	optimizer.zero_grad() # reset gradients for accumulation for the next large_batch
+	# for each large batch of training data...
+	for idx, batch in enumerate(loader, 0):
 		
 		# progress update every 40 batches.
-		if step % 500 == 0:# and not step == 0:
-			print('  Batch {:>5,}  of  {:>5,}.'.format(step, len(loader))) # Report progress.
+		if idx % 500 == 0:# and not idx == 0:
+			print(' Batch {:>5,}  of  {:>5,}.'.format(idx, len(loader))) # Report progress.
 		
 		y = batch['target_ids'].to(device, dtype = torch.long)
 		y_ids = y[:, :-1].contiguous()
@@ -118,20 +129,22 @@ def train(epoch, epochs, tokenizer, model, device, loader, optimizer):
 			attention_mask = mask, 
 			decoder_input_ids=y_ids, 
 			labels=lm_labels)
-	
 		#loss functions
 		loss = logits[0]
 		
 		# sum the training loss over all batches for average loss at end
 		# loss is a tensor containing a single value
 		train_total_loss += loss.item()
-		if step%500 == 0:
+		if idx%500 == 0:
 			print({"Training Loss": loss.item()})
-		
-		# backpropagation-> updata the model's parameters to minimize the loss function
-		optimizer.zero_grad() # clear previously calculated gradients
-		loss.backward()
-		optimizer.step()
+
+		# backpropagation-> gradient accumulation to update the model's parameters
+		(loss / accumulation_steps).backward() # gradeints computed for small_batch
+		# update the weights only after accumulating k small batches (steps)
+		if (idx + 1) % accumulation_steps == 0: 
+			print(f"==> Gradient accumulation after step {accumulation_steps} in batch {idx+1}...")
+			optimizer.step()
+			optimizer.zero_grad() # reset gradients for accumulation for the next large_batch
 	
 	# calculate the average loss over all of the batches
 	avg_train_loss = train_total_loss / len(loader)
@@ -140,9 +153,9 @@ def train(epoch, epochs, tokenizer, model, device, loader, optimizer):
 	training_time = time.time() - total_t0
 	
 	# print result summaries
-	print("===============")
-	print("Summary Results")
-	print("===============")
+	print("=========================================")
+	print("Training Results")
+	print("=========================================")
 	print("Epoch | train loss | train time ")
 	print(f"{epoch+1:5d} | {avg_train_loss:.5f} | {training_time:}")
 	# print(f'Epoch: {epoch}, Loss:  {loss.item()}')
@@ -205,7 +218,7 @@ def validate(epoch, epochs, tokenizer, model, device, loader):
 
 			if step%500 == 0:
 				print(f'Completed {step} step...')
-				print(predictions)
+				# print(predictions)
 			
 		# Compute metrics
 		result1 = bleu_score.compute()
@@ -234,9 +247,9 @@ def validate(epoch, epochs, tokenizer, model, device, loader):
 		
 		# print result summaries
 		print("")
-		print("===============")
-		print("Summary Validation Results")
-		print("===============")
+		print("=========================================")
+		print("Validation Results")
+		print("=========================================")
 		print("| Epoch | BLEU | ROUGE1 | ROUGE2 | ROUGE-L | Avg Rouge | val time |")
 		print(f"| {epoch+1:5d} | {bleu} | {rouge1_f1} | {rouge2_f1} | {rougel_f1} | {total_valid_rouge} | {training_time:} |")
 			
@@ -247,19 +260,35 @@ def validate(epoch, epochs, tokenizer, model, device, loader):
 def main():
 	
 	# Defining some key variables that will be used later on in the training  
-	TRAIN_BATCH_SIZE = 4   # input batch size for training (default: 64)
-	VALID_BATCH_SIZE = 4    # input batch size for testing (default: 1000)
-	TEST_BATCH_SIZE = 4
-	EPOCHS = 10
-	LEARNING_RATE = 1e-2    # learning rate (default: 0.01)
-	SEED = 123               # random seed (default: 42)
+	GRADIENT_ACCUM = 4
+	TRAIN_BATCH_SIZE = 4
+	# this means training will be done for affective batch size of BATCH_SIZE * GRADIENT_ACCUM
+	VALID_BATCH_SIZE = 4
+	TEST_BATCH_SIZE = 16
+	EPOCHS = 6
+	LEARNING_RATE = 1e-3
+	# random seed
+	SEED = 123
 	MAX_LEN = 512
 	SUMMARY_LEN = 128
+	MODEL_NAME = 'flan-t5-base'
 	
 	# Set random seeds and deterministic pytorch for reproducibility
 	torch.manual_seed(SEED) # pytorch random seed
 	np.random.seed(SEED) # numpy random seed
 	torch.backends.cudnn.deterministic = True
+	# creating experiment folders
+	exp_folder_path = create_folder(f"./experiments/{MODEL_NAME}", f"ep_{EPOCHS}_batch_{TRAIN_BATCH_SIZE}_step_{GRADIENT_ACCUM}_lr_{LEARNING_RATE}")
+	model_folder_path = create_folder(exp_folder_path, "model_save")
+	# configuring and saving Logger & Output
+	Log_Format = "%(levelname)s | %(asctime)s | %(filename)s | %(message)s"
+	logging.basicConfig(filename = exp_folder_path + "/logger.log",
+                        filemode = "a",
+                        format = Log_Format, 
+                        level = logging.DEBUG)
+	logger = logging.getLogger()
+	log_file = open(exp_folder_path + "/output.log","w")
+	sys.stdout = log_file
 
 	# tokenzier for encoding the text
 	# tokenizer = T5Tokenizer.from_pretrained("t5-base")
@@ -272,8 +301,7 @@ def main():
 	model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-base")
 	model = model.to(device)
 	
-	# Importing and Pre-Processing the domain data
-	# Selecting the needed columns only. 
+	# Importing and Pre-Processing the domain data. Selecting the needed columns only. 
 	# Adding the summarzie text in front of the text. This is to format the dataset similar to how T5 model was trained for summarization task. 
 	# train_dataset = pd.read_json('./train_data.json', lines=True)[['findings', 'impression']]
 	# val_dataset = pd.read_json('./dev_data.json', lines=True)[['findings', 'impression']]
@@ -312,7 +340,7 @@ def main():
 		'num_workers': 0
 		}
 		
-	# Creation of Dataloaders for testing and validation. This will be used down for training and validation stage for the model.
+	# Creation of Dataloaders
 	training_loader = DataLoader(training_set, **train_params)
 	val_loader = DataLoader(val_set, **val_params)
 	test_loader = DataLoader(test_set, **val_params)
@@ -328,15 +356,16 @@ def main():
 		amsgrad=False)
 	# scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=20, eta_min=0)
 	#scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.1)
-	
+
 	output_head = ['predict', 'actual']
-	with open('./model_save/generate_output.csv', 'w', newline='\n') as f:
+	with open(exp_folder_path + '/generate_output.csv', 'w', newline='\n') as f:
 		dw = csv.DictWriter(f, delimiter=',', fieldnames=output_head)
 		dw.writeheader()
 	
 	# Training loop
-	print('Initiating Fine-Tuning for the model on our dataset')
+	print('Initiating Fine-Tuning...')
 	epochs = EPOCHS
+	accumulation_steps = GRADIENT_ACCUM
 	training_stats = []
 	valid_stats = []
 	best_val_rouge = 0
@@ -344,16 +373,16 @@ def main():
 	for epoch in range(epochs):
 		model.to(device)
 		
-		train(epoch, epochs, tokenizer, model, device, training_loader, optimizer)
+		train(epoch, epochs, tokenizer, model, device, training_loader, optimizer, accumulation_steps)
 		sys.stdout.flush()
 		
 		# validate & generate
 		predictions, actuals, val_rouge = validate(epoch, epochs, tokenizer, model, device, val_loader)
 		sys.stdout.flush()
 		
-		torch.save(model.state_dict(), f"./model_save/val_model/model_lr{LEARNING_RATE}_batch{VALID_BATCH_SIZE}_{epoch}.pt")
+		torch.save(model.state_dict(), model_folder_path + f"/model_ep{epoch}.pt")
 		
-		with open('./model_save/generate_output.csv', 'a', newline='\n') as f:
+		with open(exp_folder_path + '/generate_output.csv', 'a', newline='\n') as f:
 			writer = csv.writer(f, delimiter=',')
 			writer.writerow([predictions, actuals])
 		
@@ -363,7 +392,7 @@ def main():
 			# predictions_test, actuals_test, test_rouge = validate(epoch,epochs, tokenizer, model, device, test_loader)
 			
 			# save best model for use later
-			torch.save(model.state_dict(), './model_save/best_model.pt')
+			torch.save(model.state_dict(), model_folder_path + f"/best_model.pt")
 			print(best_val_rouge, ' Best val Rouge Model was saved.')
 		# scheduler.step()
 
