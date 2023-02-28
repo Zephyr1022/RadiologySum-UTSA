@@ -4,3 +4,6 @@ model_save
 nohup.log
 nohup1.log
 experiments
+flant5-summ.py
+test.py
+config_image.py
