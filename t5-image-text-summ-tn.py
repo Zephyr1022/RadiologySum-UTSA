@@ -84,7 +84,8 @@ class MultiModalt5(T5ForConditionalGeneration):  # nn.Module
     def forward(self, input_ids=None, pixel_values=None, attention_mask=None, decoder_input_ids=None, labels=None, encoder_outputs=None, use_cache=True, **kwargs):
         use_cache = use_cache if use_cache is not None else self.configTEXT.use_cache
         # Encoder output
-        encoder_outputs = self.encoder(input_ids=input_ids, pixel_values=pixel_values, attention_mask=attention_mask)
+        if encoder_outputs is None:
+            encoder_outputs = self.encoder(input_ids=input_ids, pixel_values=pixel_values, attention_mask=attention_mask)
 
         # # text output from encoder
         # text_h = encoder_outputs.last_hidden_state # text_encoder_outputs[0]
@@ -130,34 +131,44 @@ class MultiModalt5(T5ForConditionalGeneration):  # nn.Module
                     decoder_attentions=decoder_outputs.attentions,
                     cross_attentions=decoder_outputs.cross_attentions,
                     encoder_last_hidden_state=encoder_outputs.last_hidden_state, #encoder_outputs.last_hidden_state,
+                    encoder_hidden_states=encoder_outputs.hidden_states,
                     encoder_attentions=encoder_outputs.attentions,
                 )
                 
     def prepare_inputs_for_generation(
         self,
         input_ids,
-        attention_mask=None,
-        encoder_outputs=None,
+        decoder_input_ids = None,
         pixel_values=None,
+        encoder_outputs=None,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        head_mask=None,
+        decoder_head_mask=None,
+        cross_attn_head_mask=None,
         past_key_values=None,
         use_cache=None,
-        **kwargs,
+        **kwargs
     ):
         # cut decoder_input_ids if past is used
         if past_key_values is not None:
             input_ids = input_ids[:, -1:]
-        attention_mask = input_ids.new_ones(input_ids.shape)
+        # attention_mask = input_ids.new_ones(input_ids.shape)
         # input_ids = input_ids.expand(-1, attention_mask.shape[1])
         print("ppzi prepare inputs for generation:", input_ids.shape, attention_mask.shape, pixel_values.shape)
         # encoder_outputs = self.encoder(input_ids=input_ids, pixel_values=pixel_values, attention_mask=attention_mask)
         # encoder_hidden_states = encoder_outputs.hidden_states
         # print('ppzi prepare inputs for generation encoder hidden states: ', len(encoder_hidden_states))
         return {
-            "input_ids": input_ids,
             "decoder_input_ids": input_ids,
             "pixel_values": pixel_values,
+            "encoder_hidden_states": encoder_outputs.hidden_states,
+            "encoder_last_hidden_state": encoder_outputs.last_hidden_state,
             "encoder_outputs": encoder_outputs,
             "attention_mask": attention_mask,
+            "head_mask": head_mask,
+            "decoder_head_mask": decoder_head_mask,
+            "cross_attn_head_mask": cross_attn_head_mask,
             "past_key_values": past_key_values,
             "use_cache": use_cache,
         }
