@@ -1,14 +1,9 @@
 import torch
 import torch.nn as nn
 from torch import cuda
-from transformers import AutoTokenizer, ViTModel
-from transformers.models.t5.modeling_t5 import T5EncoderModel
 from transformers.modeling_utils import PreTrainedModel
-
-from transformers.models.t5.modeling_t5 import T5ForConditionalGeneration, T5Stack, T5PreTrainedModel
-from transformers import AutoConfig
-from transformers import ViTConfig, ViTModel
-from transformers.models.t5.modeling_t5 import T5ForConditionalGeneration
+from transformers.models.t5.modeling_t5 import T5ForConditionalGeneration, T5EncoderModel, T5Stack, T5PreTrainedModel
+from transformers import ViTConfig, ViTModel, AutoConfig, AutoTokenizer
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
 from transformers.modeling_outputs import BaseModelOutput, Seq2SeqLMOutput
 

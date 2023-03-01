@@ -1,4 +1,3 @@
-# Importing libraries
 import os
 import logging
 import random
@@ -17,30 +16,23 @@ from transformers.optimization import Adafactor, AdafactorSchedule
 import transformers
 from datasets import load_dataset, load_metric
 import evaluate
+import optuna 
 from sklearn.metrics import classification_report, accuracy_score
 from sklearn.metrics._classification import _check_targets
 from transformers import T5Tokenizer, T5EncoderModel
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
-import optuna 
-from torch import cuda
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
-from transformers import T5ForConditionalGeneration
-from transformers import BertConfig, ViTConfig, VisionEncoderDecoderConfig, VisionEncoderDecoderModel
-from transformers import ViTConfig, ViTModel
-from transformers import AutoImageProcessor, ViTModel
-from transformers import AutoModelForCausalLM, T5EncoderModel, ViTModel
+from transformers import BertConfig, VisionEncoderDecoderConfig, VisionEncoderDecoderModel
+from transformers import ViTConfig, ViTModel, AutoConfig, T5Config
+from transformers import AutoImageProcessor, AutoFeatureExtractor
 from PIL import Image
-from transformers import AutoFeatureExtractor
-from transformers import AutoConfig
 import inspect
 from transformers.modeling_outputs import Seq2SeqLMOutput
 from transformers.modeling_utils import PreTrainedModel
-from transformers import T5PreTrainedModel
 from transformers.models.t5.modeling_t5 import T5ForConditionalGeneration, T5Stack, T5PreTrainedModel
-from transformers import T5Config
 from t5_encoder_tn import MultimodalEncoder
 from config import *
 import copy
+from torch import cuda
 
 device = 'cuda'
 
