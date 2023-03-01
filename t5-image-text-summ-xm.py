@@ -60,11 +60,6 @@ class MultiModalt5(T5PreTrainedModel):  # nn.Module
         
         self.config_vision = config_vision
         self.config_text = config_text
-        
-
-#       self.image_embed_dim = self.config_vision.hidden_size # 768
-#       self.text_embed_dim = self.config_text.hidden_size
-#       self.projection_dim = self.config_text.hidden_size # the number of output features or dimensions
     
         # Decoder
         self.text_model = T5ForConditionalGeneration.from_pretrained('google/flan-t5-small', config=self.config_text) 
@@ -75,15 +70,7 @@ class MultiModalt5(T5PreTrainedModel):  # nn.Module
         self.lm_head = self.text_model.lm_head
         # print("text_decoder", inspect.signature(self.text_decoder.forward))
         # print(type(text_decoder))
-        
-        # initial Vit and T5 model 
-        #self.text_encoder = self.encoder.get_text_features()
-        #self.image_encoder = self.encoder.get_image_features()
 
-#       self.visual_projection = nn.Linear(self.image_embed_dim, self.projection_dim, bias=False)
-#       self.text_projection = nn.Linear(self.text_embed_dim, self.projection_dim, bias=False)
-        # self.enc_to_dec_proj = nn.Linear(self.projection_dim * 2, self.projection_dim, bias=False)
-        
         self.dropout = nn.Dropout(0.1)
         
     def get_encoder(self):
@@ -94,17 +81,16 @@ class MultiModalt5(T5PreTrainedModel):  # nn.Module
     
     def forward(self, input_ids=None, pixel_values=None, attention_mask=None, decoder_input_ids=None, labels=None, encoder_outputs=None,**kwargs,):
         
-        # print("test7", input_ids.shape, attention_mask.shape, pixel_values.shape)
-        
+        # Encode if needed (training, first prediction pass)
         if encoder_outputs is None:
             encoder_outputs = self.encoder(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 pixel_values=pixel_values,
             ) # return 
+        # during the generate process, it is generating the text token-by-token, What it is doing is that is pass one token in to the model e.g., [<s>] to predict the next token. So, it is only changing the decoder_ids. The encoder does not need to be run every single time. So, after the first pass, the generate() code will not pass input_ids, it will just pass the encoder_output to the forward function to avoid repeated operations.
 
-        # Decoder
-        # Decode the concatenated hidden states using the T5 decoder -> (batch_size, sequence_length, hidden_size)
+        # Decode
         decoder_outputs = self.decoder(
             input_ids=decoder_input_ids,
             #attention_mask=mask_ids, # you will probably need this, but I need to look into it more
@@ -131,25 +117,6 @@ class MultiModalt5(T5PreTrainedModel):  # nn.Module
                     encoder_attentions=encoder_outputs.attentions,
                 )
     
-#   def prepare_inputs_for_generation(
-#       self, input_ids, attention_mask=None, pixel_values=None,  past=None, use_cache=None, encoder_outputs=None, **kwargs
-#   ):
-#       print("encoder_outputs",encoder_outputs)
-#       # cut decoder_input_ids if past is used
-#       # The issue is that the model does not know what to pass to the encoder, it says it is missing input_ids
-#       if past is not None:
-#           input_ids = input_ids[:, -1:]
-#           
-#       return {
-#           "inputs": None,
-#           "decoder_input_ids": input_ids,
-#           "encoder_outputs": encoder_outputs,
-#           "attention_mask": attention_mask,
-#           "pixel_values": pixel_values,
-#           "past_key_values": past,
-#           "use_cache": use_cache,
-#       }
-    
     def prepare_inputs_for_generation(
         self,
         input_ids,
@@ -169,6 +136,7 @@ class MultiModalt5(T5PreTrainedModel):  # nn.Module
         print("INPUT IDS:", input_ids.shape, decoder_input_ids, encoder_outputs.last_hidden_state.shape)
         print("PIXEL2", pixel_values.shape)
         print(kwargs.keys())
+        
         # cut decoder_input_ids if past is used
         if past_key_values is not None:
             input_ids = input_ids[:, -1:]
@@ -211,11 +179,8 @@ class MultiModalt5(T5PreTrainedModel):  # nn.Module
                 
                 reordered_decoder_past = reordered_decoder_past + (reordered_layer_past_states,)
             return reordered_decoder_past
-        
 
-    
-    
-    
+
 class CustomDataset(Dataset):
     
     def __init__(self, dataframe, tokenizer, image_processor, source_len, summ_len):
@@ -238,10 +203,8 @@ class CustomDataset(Dataset):
         """
             Constructs an image processor and a tokenizer into a single processor.
         """
-        
         text = str(self.text[index])
         text = ' '.join(text.split())
-        
         ctext = str(self.ctext[index])
         ctext = '<s> '+' '.join(ctext.split()) # df.ctext = 'summarize: ' + df.ctext/ inputs = ["summarize: " + text]
         
@@ -255,10 +218,6 @@ class CustomDataset(Dataset):
         except:
             print(f"Error opening image file {image_path}")
             return None
-        
-        # model = VisionTextDualEncoderModel.from_pretrained("clip-italian/clip-italian")
-        # image_features = model.get_image_features(**inputs)
-        # https://github.com/huggingface/transformers/blob/v4.26.1/src/transformers/models/vision_text_dual_encoder/processing_vision_text_dual_encoder.py
         
         source = self.tokenizer.batch_encode_plus([text], max_length= self.source_len, padding='max_length', return_tensors='pt',truncation=True)
         target = self.tokenizer.batch_encode_plus([ctext], max_length= self.summ_len, padding='max_length', return_tensors='pt',truncation=True)
@@ -341,10 +300,7 @@ def validate(epoch, tokenizer, model, device, loader):
     
     # capture validation time
     total_t0 = time.time()
-    # bertscore = evaluate.load("bertscore")
-    # bleu_score = evaluate.load("bleu")
     rouge_score = evaluate.load("rouge")
-    # f1radgraph = F1RadGraph(reward_level="partial")
     
     print("")
     print("Running Validation...")
@@ -377,12 +333,10 @@ def validate(epoch, tokenizer, model, device, loader):
             
             # torch.Size([1, 128]) torch.Size([1, 128]) torch.Size([1, 3, 224, 224])
             print("test3", ids.shape, mask.shape,image.shape) 
-            #print(tmp.shape)
             ###############################
             start_id = tokenizer.encode('<s>')[0]
             generated_ids = model.generate(
                 input_ids = ids,
-                #encoder_hidden_states = tmp.hidden_states,
                 attention_mask = mask,
                 pixel_values = image,
                 max_length=50,
@@ -396,37 +350,11 @@ def validate(epoch, tokenizer, model, device, loader):
             ###############################
             # Use the tokenizer to convert the output to a string
             # decoded preds	and labels
-#           preds = [tokenizer.decode(g, skip_special_tokens=True, clean_up_tokenization_spaces=True) for g in generated_ids]
-#           target = [tokenizer.decode(t, skip_special_tokens=True, clean_up_tokenization_spaces=True)for t in y]
-#           
-#           # bertscore.add_batch(predictions=preds, references=target)
-#           #bleu_score.add_batch(predictions=preds, references=target)
-#           rouge_score.add_batch(predictions=preds, references=target)
-#           #score, _, predictions_lists, actuals_lists = f1radgraph(hyps=preds, refs=target)
-#           
-#           predictions.extend(preds)
-#           actuals.extend(target)
-#               
-#       avg_val_loss = statistics.fmean(val_loss)
-#       print("---validation loss:", avg_val_loss)
-#       
-#       # Compute metrics
-#       #result1 = bleu_score.compute()
-#       result2 = rouge_score.compute()
-#       # result3 = bertscore.compute(lang="en")
-#       
-#       #bleu = result1['bleu']
-#       #print("--- BLEU ---:", bleu)
-#       rouge1_f1 = result2['rouge1']
-#       rouge2_f1 = result2['rouge2']
-#       rougel_f1 = result2['rougeL']
-#       print("--- ROUGE ---")
-#       print("rouge1:", rouge1_f1)
-#       print("rouge2:", rouge2_f1)
-#       print("rougeL:", rougel_f1)
-#       
-#   return predictions, actuals, total_valid_rouge
-    
+            preds = [tokenizer.decode(g, skip_special_tokens=True, clean_up_tokenization_spaces=True) for g in generated_ids]
+            target = [tokenizer.decode(t, skip_special_tokens=True, clean_up_tokenization_spaces=True)for t in y]
+            
+            print(preds,target)
+
 def main():
     
     # Set random seeds and deterministic pytorch for reproducibility
@@ -446,11 +374,7 @@ def main():
     
     model = MultiModalt5(config_vision,config_text)
     model = model.to(device)
-    
     print("model", model)
-
-    #model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-small")
-    #model = model.to(device)
 
     # Importing and Pre-Processing the domain data. Selecting the needed columns only. 
     # Adding the summarzie text in front of the text. This is to format the dataset similar to how T5 model was trained for summarization task. 
@@ -532,4 +456,5 @@ def main():
 if __name__ == '__main__':
     main()
 
+    
     

@@ -17,7 +17,7 @@ device = 'cuda'
 class MultimodalEncoder(T5PreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"encoder.embed_tokens.weight"]
 
-    def __init__(self, config_vision, config_text, encoder):
+    def __init__(self, config_vision,config_text, encoder):
         super().__init__(config_text)
         
         self.config_vision = config_vision
@@ -28,7 +28,7 @@ class MultimodalEncoder(T5PreTrainedModel):
         self.projection_dim = self.config_text.hidden_size # the number of output features or dimensions
 
         self.text_encoder = encoder 
-        self.tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-base")
+        self.tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-small")
         
         self.image_model = ViTModel.from_pretrained("google/vit-base-patch16-224", config=self.config_vision)
 
@@ -55,6 +55,9 @@ class MultimodalEncoder(T5PreTrainedModel):
                                 attention_mask=attention_mask,
                                 return_dict=return_dict,
                             )
+                            
+        # pooled_output = text_outputs[1]
+        # text_features = self.text_projection(pooled_output)
         
         text_h = text_outputs.last_hidden_state # text_outputs[0]
         text_embeds = self.text_projection(text_h) 
@@ -120,6 +123,8 @@ class MultimodalEncoder(T5PreTrainedModel):
             ...     pixel_values=inputs.pixel_values,
             ... )
         ```"""
+        
+        # print("t5-encoder", input_ids.shape, attention_mask.shape, pixel_values.shape)
 
         # Encode image inputs
         print("PIX:", pixel_values.shape)
