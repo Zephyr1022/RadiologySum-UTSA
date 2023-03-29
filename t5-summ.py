@@ -374,9 +374,9 @@ def main():
 	np.random.seed(SEED) # numpy random seed
 	torch.backends.cudnn.deterministic = True
 	# creating experiment folders
-	exp_folder_path = create_folder(f"./experiments/{MODEL_NAME}", f"ep_{EPOCHS}_batch_{TRAIN_BATCH_SIZE}_step_{GRADIENT_ACCUM}_lr_{LEARNING_RATE}")
+	exp_folder_path = create_folder(f"./experiments/cxr_text_only/{MODEL_NAME}", f"ep_{EPOCHS}_batch_{TRAIN_BATCH_SIZE}_step_{GRADIENT_ACCUM}_lr_{LEARNING_RATE}")
 	model_folder_path = create_folder(exp_folder_path, "model_save")
-	val_folder_path = create_folder(f"./experiments/{MODEL_NAME}/validation", f"ep_{EPOCHS}_batch_{TRAIN_BATCH_SIZE}_step_{GRADIENT_ACCUM}_lr_{LEARNING_RATE}")
+	val_folder_path = create_folder(f"./experiments/cxr_text_only/{MODEL_NAME}/validation", f"ep_{EPOCHS}_batch_{TRAIN_BATCH_SIZE}_step_{GRADIENT_ACCUM}_lr_{LEARNING_RATE}")
 
 	# tokenzier for encoding the text
 	# tokenizer = T5Tokenizer.from_pretrained("t5-base")
@@ -395,10 +395,10 @@ def main():
 	# test_dataset = pd.read_json('./test_data.json', lines=True)[['findings', 'impression']]
 	
 	# Modify this line to train data after fine tuning
-	train_dataset = pd.read_csv('/home/tongnian/data/mimiciii-csv/train_data.csv')
+	train_dataset = pd.read_csv('/home/tongnian/data/mimic-cxr/train_data.csv')
 	# ------------------------------------------------
-	val_dataset = pd.read_csv('/home/tongnian/data/mimiciii-csv/val_data.csv')
-	test_dataset = pd.read_csv('/home/tongnian/data/mimiciii-csv/test_data.csv')
+	val_dataset = pd.read_csv('/home/tongnian/data/mimic-cxr/val_data.csv')
+	test_dataset = pd.read_csv('/home/tongnian/data/mimic-cxr/test_data.csv')
 	
 	print("TRAIN Dataset: {}".format(train_dataset.shape))
 	print("VALID Dataset: {}".format(val_dataset.shape))
