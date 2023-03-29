@@ -14,6 +14,7 @@ from transformers.modeling_outputs import BaseModelOutput, Seq2SeqLMOutput
 
 device = 'cuda'
 
+
 class MultimodalEncoder(T5PreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"encoder.embed_tokens.weight"]
 
@@ -22,19 +23,21 @@ class MultimodalEncoder(T5PreTrainedModel):
         
         self.config_vision = config_vision
         self.config_text = config_text
+        self.text_encoder = encoder
         
+        self.image_model = ViTModel.from_pretrained("google/vit-base-patch16-224", config=self.config_vision)
+        self.image_model = self.image_model.to(device)
+        
+        # self.tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-base")
+        
+        # hidden state
         self.image_embed_dim = self.config_vision.hidden_size # 768
         self.text_embed_dim = self.config_text.hidden_size
         self.projection_dim = self.config_text.hidden_size # the number of output features or dimensions
-
-        self.text_encoder = encoder 
-        self.tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-small")
         
-        self.image_model = ViTModel.from_pretrained("google/vit-base-patch16-224", config=self.config_vision)
-
         # dimension projection
-        self.visual_projection = nn.Linear(self.image_embed_dim, self.projection_dim, bias=False)
-        self.text_projection = nn.Linear(self.text_embed_dim, self.projection_dim, bias=False)
+        self.visual_projection = nn.Linear(self.image_embed_dim, self.projection_dim, bias=False).to(device)
+        # self.text_projection = nn.Linear(self.text_embed_dim, self.projection_dim, bias=False).to(device)
         
         self.dropout = nn.Dropout(0.1)
 
@@ -60,7 +63,7 @@ class MultimodalEncoder(T5PreTrainedModel):
         # text_features = self.text_projection(pooled_output)
         
         text_h = text_outputs.last_hidden_state # text_outputs[0]
-        text_embeds = self.text_projection(text_h) 
+        text_embeds = text_h # self.text_projection(text_h) 
 
         return text_embeds
     
@@ -95,6 +98,7 @@ class MultimodalEncoder(T5PreTrainedModel):
         self.shared = new_embeddings
         self.encoder.set_input_embeddings(new_embeddings)
 
+
     def forward(
         self,
         input_ids=None,
@@ -127,7 +131,8 @@ class MultimodalEncoder(T5PreTrainedModel):
         # print("t5-encoder", input_ids.shape, attention_mask.shape, pixel_values.shape)
 
         # Encode image inputs
-        print("PIX:", pixel_values.shape)
+        # print("PIX:", pixel_values.shape)
+        
         image_outputs = self.image_model(pixel_values=pixel_values,output_hidden_states=True)
         text_outputs = self.text_encoder(input_ids=input_ids, attention_mask=attention_mask,output_hidden_states=True) 
 
@@ -135,16 +140,17 @@ class MultimodalEncoder(T5PreTrainedModel):
         image_embeds = self.visual_projection(image_embeds)
 
         text_embeds = text_outputs.last_hidden_state
-        text_embeds = self.text_projection(text_embeds) 
+        # text_embeds = self.text_projection(text_embeds) 
 
         # concat image and text 
         image_embeds = image_embeds.unsqueeze(1) 
-        print(image_embeds.shape, text_embeds.shape, "SIZES")
+        #print(image_embeds.shape, text_embeds.shape, "SIZES")
         
         inputs_embeds = torch.cat([image_embeds, text_embeds], dim=1)
-        print("att:", attention_mask.shape, torch.ones((text_embeds.shape[0],1)).shape)
+        #print("att:", inputs_embeds.shape, attention_mask.shape, torch.ones((text_embeds.shape[0],1)).shape)
         
         attention_mask = torch.cat([torch.ones((text_embeds.shape[0], 1)).to(device), attention_mask], dim=1)
+        #print("mask", attention_mask.shape)
 
         return BaseModelOutputWithPastAndCrossAttentions(
                     last_hidden_state=inputs_embeds,

@@ -209,16 +209,24 @@ class CustomDataset(Dataset):
         ctext = str(self.ctext[index])
         ctext = '<s> '+' '.join(ctext.split()) # df.ctext = 'summarize: ' + df.ctext/ inputs = ["summarize: " + text]
         
-        # multiple image??? ~ one summary
         image_path = str(self.image[index])
-        image_path ='/home/tongnian/data/mimic-cxr/'+ ''.join(image_path.split(',')[0])
+        image_path_list = image_path.split(",")
+        # print('nan:', image_path_list)
+
+        pixel_list = []
+        for i in image_path_list:
+            image_path ='/home/tongnian/data/mimic-cxr/'+ ''.join(i)
+            # print('nan2: ', image_path)
+            # error handling
+            try:
+                ct_image = Image.open(image_path).convert('RGB') #.convert('RGB')
+                image_features = self.image_processor(ct_image, return_tensors="pt")
+                pixel_list.append(image_features.pixel_values)
+            except:
+                print(f"Error opening image file {image_path}")
+                return None
         
-        # error handling
-        try:
-            ct_image = Image.open(image_path).convert('RGB') #.convert('RGB')
-        except:
-            print(f"Error opening image file {image_path}")
-            return None
+        avg_pixel_values = sum(pixel_list) / len(pixel_list)
         
         source = self.tokenizer.batch_encode_plus([text], max_length= self.source_len, padding='max_length', return_tensors='pt',truncation=True)
         target = self.tokenizer.batch_encode_plus([ctext], max_length= self.summ_len, padding='max_length', return_tensors='pt',truncation=True)
@@ -234,7 +242,7 @@ class CustomDataset(Dataset):
             'source_mask': source_mask.to(dtype=torch.long),
             'target_ids': target_ids.to(dtype=torch.long),
             'target_ids_y': target_ids.to(dtype=torch.long),
-            'pixel_values': image_features.pixel_values
+            'pixel_values': avg_pixel_values
         }
     
     
@@ -354,28 +362,28 @@ def validate(epoch, tokenizer, model, device, loader):
             if step%200 == 0:
                 print(f'Completed {step} step...')
                 
-            avg_val_loss = statistics.fmean(val_loss)
-            print("validation loss:", avg_val_loss)
-            
-            result2 = rouge_score.compute()
-            rouge1_f1 = result2['rouge1']
-            rouge2_f1 = result2['rouge2']
-            rougel_f1 = result2['rougeL']
-            print("--- ROUGE ---")
-            print("rouge1:", rouge1_f1)
-            print("rouge2:", rouge2_f1)
-            print("rougeL:", rougel_f1)
-            
-            total_valid_rouge = (rouge1_f1+rouge2_f1+rougel_f1)/3
-            
-            print("")
-            print("==============================================")
-            print("Validation Results")
-            print("==============================================")
-            print("| Epoch | Val loss | ROUGE1 | ROUGE2 | ROUGE-L | Avg Rouge |")
-            print(f"| {epoch+1:5d} | {avg_val_loss} | {rouge1_f1} | {rouge2_f1} | {rougel_f1} | {total_valid_rouge} |")
-            
-        return predictions, actuals, total_valid_rouge
+        avg_val_loss = statistics.fmean(val_loss)
+        print("validation loss:", avg_val_loss)
+        
+        result2 = rouge_score.compute()
+        rouge1_f1 = result2['rouge1']
+        rouge2_f1 = result2['rouge2']
+        rougel_f1 = result2['rougeL']
+        print("--- ROUGE ---")
+        print("rouge1:", rouge1_f1)
+        print("rouge2:", rouge2_f1)
+        print("rougeL:", rougel_f1)
+        
+        total_valid_rouge = (rouge1_f1+rouge2_f1+rougel_f1)/3
+        
+        print("")
+        print("==============================================")
+        print("Validation Results")
+        print("==============================================")
+        print("| Epoch | Val loss | ROUGE1 | ROUGE2 | ROUGE-L | Avg Rouge |")
+        print(f"| {epoch+1:5d} | {avg_val_loss} | {rouge1_f1} | {rouge2_f1} | {rougel_f1} | {total_valid_rouge} |")
+        
+    return predictions, actuals, total_valid_rouge
 
 def main():
     
