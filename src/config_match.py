@@ -1,6 +1,6 @@
 import os
 
-MODE = 'test' # train, inference, embeds
+MODE = 'train' # train, inference, embeds
 
 # Defining some key variables that will be used later on in the training  
 GRADIENT_ACCUM = 8

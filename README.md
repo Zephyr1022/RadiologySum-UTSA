@@ -16,7 +16,24 @@ This repo provides code for generating impressions using descriptions of finding
 
 ## Training Instructions
 
-## Testing Instructions
+### Step 1: Environment Setup
+Ensure that you have set up your environment as per the `requirements.txt` file and that your dataset is properly organized.
+
+### Step 2: Configuration
+Before starting the training, you need to modify the configuration settings in the `config_match.py` file located in the `src` directory. 
+
+- Open `src/config_match.py`.
+- Locate the line containing `MODE = 'train' # train, inference, embeds`.
+- Change `MODE` to one of the following as per your requirement:
+  - `'train'` for training the model.
+  - `'inference'` for making predictions.
+  - `'embeds'` for extracting embeddings.
+
+### Step 3: Start Training
+After setting the mode, run `radiology-multimodal.py` to start the training process (or prediction or embedding extraction, depending on your MODE setting).
+
+### Step 4: Monitoring and Evaluation
+Monitor the training process for any errors and evaluate the model’s performance using appropriate metrics.
 
 
 # CITE
