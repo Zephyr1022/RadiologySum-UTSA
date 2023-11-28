@@ -1,0 +1,7 @@
+trl
+scikit-learn
+evaluate
+nltk
+lion_pytorch
+git+https://github.com/huggingface/peft
+bitsandbytes
